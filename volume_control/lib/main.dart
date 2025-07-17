@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:sound_mode/sound_mode.dart';
-import 'package:sound_mode/utils/ringer_mode_statuses.dart';
+import 'package:volume_controller/volume_controller.dart';
 
 void main() {
   runApp(const MyApp());
@@ -33,7 +32,6 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-
   void _navigateToVolumeControl() {
     Navigator.push(
       context,
@@ -120,7 +118,6 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> {
   double _currentVolume = 0.5;
   bool _isMuted = false;
   double _previousVolume = 0.5;
-  RingerModeStatus _ringerMode = RingerModeStatus.normal;
 
   @override
   void initState() {
@@ -130,53 +127,47 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> {
 
   Future<void> _initializeVolume() async {
     try {
-      RingerModeStatus ringerStatus = await SoundMode.ringerModeStatus;
+      double volume = await VolumeController.instance.getVolume();
       setState(() {
-        _ringerMode = ringerStatus;
-        _isMuted = ringerStatus == RingerModeStatus.silent;
+        _currentVolume = volume;
+        _isMuted = volume == 0;
       });
     } catch (e) {
-      print('Error getting ringer mode: $e');
+      print('Error getting volume: $e');
     }
   }
 
   Future<void> _setVolume(double volume) async {
-    setState(() {
-      _currentVolume = volume;
-      _isMuted = volume == 0;
-    });
-
-    // Simulate volume change effect
-    if (volume == 0) {
-      await _setRingerMode(RingerModeStatus.silent);
-    } else {
-      await _setRingerMode(RingerModeStatus.normal);
-    }
-  }
-
-  Future<void> _setRingerMode(RingerModeStatus mode) async {
     try {
-      await SoundMode.setSoundMode(mode);
+      await VolumeController.instance.setVolume(volume);
       setState(() {
-        _ringerMode = mode;
+        _currentVolume = volume;
+        _isMuted = volume == 0;
       });
     } catch (e) {
-      print('Error setting ringer mode: $e');
+      print('Error setting volume: $e');
     }
   }
 
-  void _toggleMute() async {
-    if (_isMuted) {
-      _setVolume(_previousVolume);
-      await _setRingerMode(RingerModeStatus.normal);
-    } else {
-      _previousVolume = _currentVolume;
-      _setVolume(0.0);
-      await _setRingerMode(RingerModeStatus.silent);
+  Future<void> _toggleMute() async {
+    try {
+      if (_isMuted) {
+        await VolumeController.instance.setVolume(_previousVolume);
+        setState(() {
+          _currentVolume = _previousVolume;
+          _isMuted = false;
+        });
+      } else {
+        _previousVolume = _currentVolume;
+        await VolumeController.instance.setVolume(0.0);
+        setState(() {
+          _currentVolume = 0.0;
+          _isMuted = true;
+        });
+      }
+    } catch (e) {
+      print('Error toggling mute: $e');
     }
-    setState(() {
-      _isMuted = !_isMuted;
-    });
   }
 
   void _increaseVolume() {
@@ -194,8 +185,6 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> {
       return Icons.volume_off;
     } else if (_currentVolume < 0.3) {
       return Icons.volume_down;
-    } else if (_currentVolume < 0.7) {
-      return Icons.volume_up;
     } else {
       return Icons.volume_up;
     }
@@ -221,154 +210,136 @@ class _VolumeControlScreenState extends State<VolumeControlScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.black,
-              Colors.grey[900]!,
-            ],
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Volume Icon
-            Container(
-              width: 100,
-              height: 100,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Center(
+            child: Container(
+              padding: EdgeInsets.symmetric(vertical: 20),
               decoration: BoxDecoration(
-                color: Colors.grey[800],
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                _getVolumeIcon(),
-                size: 50,
-                color: Colors.white,
-              ),
-            ),
-
-            SizedBox(height: 30),
-
-            // Volume Level Text
-            Text(
-              '${(_currentVolume * 100).round()}%',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            SizedBox(height: 50),
-
-            // Volume Slider
-            Container(
-              height: 400,
-              width: 80,
-              margin: EdgeInsets.symmetric(horizontal: 50),
-              child: RotatedBox(
-                quarterTurns: 3,
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 60,
-                    thumbShape: RoundSliderThumbShape(enabledThumbRadius: 20),
-                    overlayShape: RoundSliderOverlayShape(overlayRadius: 30),
-                    activeTrackColor: Colors.blue,
-                    inactiveTrackColor: Colors.grey[700],
-                    thumbColor: Colors.white,
-                    overlayColor: Colors.blue.withOpacity(0.2),
-                  ),
-                  child: Slider(
-                    value: _currentVolume,
-                    min: 0.0,
-                    max: 1.0,
-                    onChanged: (value) {
-                      _setVolume(value);
-                    },
-                  ),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black,
+                    Colors.grey[900]!,
+                  ],
                 ),
               ),
-            ),
-
-            SizedBox(height: 50),
-
-            // Control Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                // Decrease Volume Button
-                GestureDetector(
-                  onTap: _decreaseVolume,
-                  child: Container(
-                    width: 60,
-                    height: 60,
+              child: Column(
+                children: [
+                  Container(
+                    width: 100,
+                    height: 100,
                     decoration: BoxDecoration(
                       color: Colors.grey[800],
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      Icons.remove,
+                      _getVolumeIcon(),
+                      size: 50,
                       color: Colors.white,
-                      size: 30,
                     ),
                   ),
-                ),
-
-                // Mute/Unmute Button
-                GestureDetector(
-                  onTap: _toggleMute,
-                  child: Container(
+                  SizedBox(height: 30),
+                  Text(
+                    '${(_currentVolume * 100).round()}%',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 30),
+                  Container(
+                    height: 300,
                     width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: _isMuted ? Colors.red : Colors.blue,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _isMuted ? Icons.volume_off : Icons.volume_up,
-                      color: Colors.white,
-                      size: 35,
-                    ),
-                  ),
-                ),
-
-                // Increase Volume Button
-                GestureDetector(
-                  onTap: _increaseVolume,
-                  child: Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[800],
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.add,
-                      color: Colors.white,
-                      size: 30,
+                    margin: EdgeInsets.symmetric(horizontal: 50),
+                    child: RotatedBox(
+                      quarterTurns: 3,
+                      child: SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 60,
+                          thumbShape:
+                          RoundSliderThumbShape(enabledThumbRadius: 20),
+                          overlayShape:
+                          RoundSliderOverlayShape(overlayRadius: 30),
+                          activeTrackColor: Colors.blue,
+                          inactiveTrackColor: Colors.grey[700],
+                          thumbColor: Colors.white,
+                          overlayColor: Colors.blue.withOpacity(0.2),
+                        ),
+                        child: Slider(
+                          value: _currentVolume,
+                          min: 0.0,
+                          max: 1.0,
+                          onChanged: (value) {
+                            _setVolume(value);
+                          },
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-
-            SizedBox(height: 30),
-
-            // Volume Status Text
-            Text(
-              _isMuted ? 'Muted' : 'Volume On',
-              style: TextStyle(
-                color: _isMuted ? Colors.red : Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
+                  SizedBox(height: 30),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      GestureDetector(
+                        onTap: _decreaseVolume,
+                        child: Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[800],
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.remove,
+                              color: Colors.white, size: 30),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: _toggleMute,
+                        child: Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: _isMuted ? Colors.red : Colors.blue,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            _isMuted ? Icons.volume_off : Icons.volume_up,
+                            color: Colors.white,
+                            size: 35,
+                          ),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: _increaseVolume,
+                        child: Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[800],
+                            shape: BoxShape.circle,
+                          ),
+                          child:
+                          Icon(Icons.add, color: Colors.white, size: 30),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 20),
+                  Text(
+                    _isMuted ? 'Muted' : 'Volume On',
+                    style: TextStyle(
+                      color: _isMuted ? Colors.red : Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
